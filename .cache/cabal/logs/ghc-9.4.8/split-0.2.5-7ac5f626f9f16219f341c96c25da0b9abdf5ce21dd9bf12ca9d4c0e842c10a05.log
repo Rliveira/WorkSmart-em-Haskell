@@ -1,0 +1,6 @@
+Configuring library for split-0.2.5..
+Preprocessing library for split-0.2.5..
+Building library for split-0.2.5..
+[1 of 2] Compiling Data.List.Split.Internals ( src/Data/List/Split/Internals.hs, dist/build/Data/List/Split/Internals.o, dist/build/Data/List/Split/Internals.dyn_o )
+[2 of 2] Compiling Data.List.Split  ( src/Data/List/Split.hs, dist/build/Data/List/Split.o, dist/build/Data/List/Split.dyn_o )
+Installing library in /home/runner/.local/state/cabal/store/ghc-9.4.8/incoming/new-90/home/runner/.local/state/cabal/store/ghc-9.4.8/split-0.2.5-7ac5f626f9f16219f341c96c25da0b9abdf5ce21dd9bf12ca9d4c0e842c10a05/lib

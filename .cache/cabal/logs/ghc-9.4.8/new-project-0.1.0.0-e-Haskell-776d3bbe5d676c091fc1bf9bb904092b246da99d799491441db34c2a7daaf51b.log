@@ -1,0 +1,13 @@
+Configuring executable 'Haskell' for new-project-0.1.0.0..
+Preprocessing executable 'Haskell' for new-project-0.1.0.0..
+Building executable 'Haskell' for new-project-0.1.0.0..
+[1 of 1] Compiling Main             ( app/Main.hs, dist/build/Haskell/Haskell-tmp/Main.o )
+
+app/Main.hs:11:1: error:
+    Could not load module ‘Data.Map’
+    It is a member of the hidden package ‘containers-0.6.7’.
+    Perhaps you need to add ‘containers’ to the build-depends in your .cabal file.
+    Use -v (or `:set -v` in ghci) to see a list of the files searched for.
+   |
+11 | import qualified Data.Map as Map
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

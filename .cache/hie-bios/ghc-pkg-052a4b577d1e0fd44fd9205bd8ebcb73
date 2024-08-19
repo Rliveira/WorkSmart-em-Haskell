@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /nix/store/psds2pz1qhlr4z8qcahqii6kq1xsawb8-ghc-9.4.8/lib/ghc-9.4.8/bin/ghc-pkg --global-package-db /nix/store/psds2pz1qhlr4z8qcahqii6kq1xsawb8-ghc-9.4.8/lib/ghc-9.4.8/package.conf.d ${1+"$@"}

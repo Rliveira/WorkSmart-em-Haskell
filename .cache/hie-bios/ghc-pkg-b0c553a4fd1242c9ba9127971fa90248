@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /nix/store/fxclkbv9mwgcn8b8lrs2mr040kw4sgcn-ghc-9.4.8/lib/ghc-9.4.8/bin/ghc-pkg --global-package-db /nix/store/fxclkbv9mwgcn8b8lrs2mr040kw4sgcn-ghc-9.4.8/lib/ghc-9.4.8/package.conf.d ${1+"$@"}

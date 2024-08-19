@@ -1,0 +1,10 @@
+Configuring executable 'Haskell' for new-project-0.1.0.0..
+Preprocessing executable 'Haskell' for new-project-0.1.0.0..
+Building executable 'Haskell' for new-project-0.1.0.0..
+[1 of 1] Compiling Main             ( app/Main.hs, dist/build/Haskell/Haskell-tmp/Main.o )
+
+app/Main.hs:3:124: error:
+    Module ‘Data.Time’ does not export ‘timeOfDatToTime’
+  |
+3 | import Data.Time (TimeOfDay, Day, getCurrentTime, utctDay, utcToLocalTime, getCurrentTimeZone, localTimeOfDay, parseTimeM, timeOfDatToTime)
+  |                                                                                                                            ^^^^^^^^^^^^^^^
