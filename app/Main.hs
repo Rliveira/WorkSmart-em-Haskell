@@ -582,3 +582,651 @@ registrarEntrada banco@(funcionarios, tarefas, registros) = do
               putStrLn "\nErro: Funcionário não encontrado!"
               subMenuRegistros banco
 
+-- Função para listar registros do dia atual sem saída e chamar o submenu de registros
+listarRegistrosDoDiaAtualSemSaida :: Banco -> IO Bool
+listarRegistrosDoDiaAtualSemSaida (_, _, registros) = do
+  dataAtual <- obterDataAtual
+
+  -- Filtrando os registros sem saída do dia atual
+  let registrosSemSaida = filter (\r -> getDataRegistro r == dataAtual && isNothing (getHoraSaida r)) registros
+      tuplasRegistros = map (\r -> (getIdRegistro r, getNomeFuncionario (getFuncionario r))) registrosSemSaida
+
+  -- Verificando se há registros sem saída do dia atual
+  if null tuplasRegistros
+    then do
+      putStrLn "Não há registros sem horário de saída para o dia atual."
+      return True
+    else do
+      putStrLn "\nRegistros sem horário de saída para o dia atual:\n"
+      mapM_ (\(idReg, nome) -> putStrLn $ "ID do registro: " ++ idReg ++ " - Nome: " ++ nome) tuplasRegistros
+      putStrLn ""
+      return False
+
+-- Função para registrar a hora de saída de um funcionário
+registrarSaida :: Banco -> IO Banco
+registrarSaida banco@(funcionarios, tarefas, registros) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nRegistrar Saída de Funcionário\n"
+  voltarSubMenuRegistros <- listarRegistrosDoDiaAtualSemSaida banco
+
+  -- se voltarSubMenuRegistros for True, o fluxo do código será interrompido e retonará ao submenu de registros
+  if voltarSubMenuRegistros
+    then subMenuRegistros banco
+    else do
+      putStr "Digite o ID do Registro: "
+      idRegistroStr <- getLine
+
+      -- Verifica se o campo ID do Registro não está vazio ou preenchido apenas com espaços
+      if not (camposValidos [idRegistroStr])
+        then do
+          putStrLn "Erro: Todos os campos devem ser preenchidos corretamente!"
+          subMenuRegistros banco
+        else do
+          let idRegistro = idRegistroStr
+
+          -- Verifica se o ID do registro existe na lista de registros
+          if verificarIDRegistro idRegistro registros
+            then do
+              let registroExistente = head $ filter (\r -> getIdRegistro r == idRegistro) registros
+
+              -- Verifica se o funcionário já registrou entrada no dia atual
+              let idFuncionario = getIdFuncionario (getFuncionario registroExistente)
+              if not (jaRegistrouEntrada idFuncionario (getDataRegistro registroExistente) registros)
+                then do
+                  putStrLn "Erro: Funcionário não registrou entrada no dia atual!"
+                  subMenuRegistros banco
+                else do
+                  horaSaidaAtual <- obterHoraAtual
+
+                  -- Verifica se o horário de saída já foi registrado
+                  if isJust (getHoraSaida registroExistente)
+                    then do
+                      putStrLn "Erro: Funcionário já possui horário de saída registrado no dia atual!"
+                      subMenuRegistros banco
+                    else do
+                      let novoRegistro = registroExistente {getHoraSaida = Just horaSaidaAtual}
+                          registrosAtualizados = novoRegistro : filter (\r -> getIdRegistro r /= idRegistro) registros
+
+                      let novoBanco = (funcionarios, tarefas, registrosAtualizados)
+                      salvarDados novoBanco
+                      putStrLn "Saída registrada com sucesso!"
+                      subMenuRegistros novoBanco
+            else do
+              putStrLn "Erro: Registro não encontrado!"
+              subMenuRegistros banco
+
+-- Função para listar todos os funcionários que registraram entrada no dia atual
+listarFuncionariosComEntrada :: Banco -> IO ()
+listarFuncionariosComEntrada (_, _, registros) = do
+  dataAtual <- obterDataAtual
+
+  -- Filtra os registros para encontrar aqueles com entrada registrada no dia atual
+  let registrosComEntrada = filter (\r -> getDataRegistro r == dataAtual) registros
+
+  -- Cria uma lista de pares (Nome do Funcionário, Hora de Entrada)
+  let funcionariosComEntrada =
+        [ (getNomeFuncionario (getFuncionario r), getHoraEntrada r)
+          | r <- registrosComEntrada
+        ]
+
+  if null funcionariosComEntrada
+    then putStrLn "Nenhum funcionário registrou entrada no dia atual."
+    else do
+      putStrLn "\nFuncionários que registraram entrada no dia atual:"
+      mapM_ (\(nome, hora) -> putStrLn $ "Nome: " ++ nome ++ " - Hora de Entrada: " ++ formatarHora hora) funcionariosComEntrada
+
+-- Função para listar todos os funcionários que registraram saída no dia atual
+listarFuncionariosComSaida :: Banco -> IO ()
+listarFuncionariosComSaida (_, _, registros) = do
+  dataAtual <- obterDataAtual
+
+  let registrosComSaida = filter (\r -> getDataRegistro r == dataAtual && isJust (getHoraSaida r)) registros
+
+  -- Cria uma lista de pares (Nome do Funcionário, Hora de Saída)
+  let funcionariosComSaida =
+        [ (getNomeFuncionario (getFuncionario r), getHoraSaida r)
+          | r <- registrosComSaida
+        ]
+
+  if null funcionariosComSaida
+    then putStrLn "Nenhum funcionário registrou saída no dia atual."
+    else do
+      putStrLn "\nFuncionários que registraram saída no dia atual:"
+      mapM_ (\(nome, hora) -> putStrLn $ " Nome: " ++ nome ++ " - Hora de Saída: " ++ maybe "Não registrado" formatarHora hora) funcionariosComSaida
+
+subMenuTarefas :: Banco -> IO Banco
+subMenuTarefas banco = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nGerenciar Tarefas\n"
+  putStrLn "1. Atribuir Tarefa a um Funcionário"
+  putStrLn "2. Atualizar Estado de Tarefa"
+  putStrLn "3. Listar Tarefas de um Funcionário"
+  putStrLn "4. Listar Todas as Tarefas"
+  putStrLn "5. Listar Tarefas Pendentes"
+  putStrLn "6. Listar Tarefas Fora do Prazo"
+  putStrLn "7. Voltar ao Menu Principal\n"
+  putStr "Escolha uma opção: "
+  opcao <- getLine
+
+  case opcao of
+    "1" -> atribuirTarefa banco
+    "2" -> atualizarEstadoTarefa banco
+    "3" -> listarTarefasDeUmFuncionario banco >> subMenuTarefas banco
+    "4" -> listarTodasTarefas banco >> subMenuTarefas banco
+    "5" -> listarTarefasPendentes banco >> subMenuTarefas banco
+    "6" -> listarTarefasConcluidasForaDoPrazo banco >> subMenuTarefas banco
+    "7" -> menuPrincipal banco
+    _ -> do
+      putStrLn "Opção inválida, tente novamente."
+      subMenuTarefas banco
+
+-- Função auxiliar para buscar um funcionário pelo ID
+buscarFuncionarioPorID :: IDFuncionario -> [Funcionario] -> Maybe Funcionario
+buscarFuncionarioPorID myid funcionarios =
+  case filter (\f -> getIdFuncionario f == myid) funcionarios of
+    (x : _) -> Just x
+    [] -> Nothing
+
+-- Função que converte string para dia
+parseDia :: String -> Maybe Day
+parseDia = parseTimeM True defaultTimeLocale "%Y-%m-%d"
+
+-- Função para remover espaços em branco do início e do fim de uma string
+removerEspacos :: String -> String
+removerEspacos = f . f
+  where
+    f = reverse . dropWhile (== ' ')
+
+-- Função para atribuir uma tarefa a um ou mais funcionários
+atribuirTarefa :: Banco -> IO Banco
+atribuirTarefa banco@(funcionarios, tarefas, registros) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nAtribuir Tarefa a um Funcionário\n"
+  listarFuncionarios banco
+  putStr "Digite o ID do Funcionário que irá atribuir a tarefa: "
+  idAtribuidorStr <- getLine
+  putStr "Digite o(s) ID(s) dos Funcionários que executarão a tarefa (separados por vírgula, pode ser um ou mais): "
+  idsExecutoresStr <- getLine
+  putStr "Digite o Título da Tarefa: "
+  titulo <- getLine
+  putStr "Digite a Descrição da Tarefa: "
+  descricao <- getLine
+  putStr "Digite a Data de Conclusão da Tarefa (AAAA-MM-DD): "
+  dataConclusaoStr <- getLine
+  dataAtual <- obterDataAtual
+
+  -- Verifica se todos os campos foram preenchidos
+  if not (camposValidos [idAtribuidorStr, titulo, descricao, dataConclusaoStr, idsExecutoresStr])
+    then do
+      putStrLn "Erro: Todos os campos devem ser preenchidos corretamente!"
+      subMenuTarefas banco
+    else case parseDia dataConclusaoStr of
+      Nothing -> do
+        putStrLn "Erro: A data de conclusão está no formato incorreto!"
+        subMenuTarefas banco
+      Just dataConclusao -> do
+        -- Verifica se a data de conclusão é posterior à data atual
+        if dataConclusao > dataAtual
+          then do
+            -- Verifica se o ID do atribuidor é válido
+            case buscarFuncionarioPorID idAtribuidorStr funcionarios of
+              Nothing -> do
+                putStrLn "Erro: O ID do atribuidor não corresponde a nenhum funcionário registrado!"
+                subMenuTarefas banco
+              Just atribuidor -> do
+                -- Verifica se todos os IDs dos executores são válidos
+                let idsExecutores = map removerEspacos (splitOn "," idsExecutoresStr)
+                let executoresValidos = mapMaybe (`buscarFuncionarioPorID` funcionarios) idsExecutores
+
+                if length executoresValidos /= length idsExecutores
+                  then do
+                    putStrLn "Erro: Um ou mais IDs dos executores não correspondem a funcionários registrados!"
+                    subMenuTarefas banco
+                  else do
+                    let novaTarefa = Tarefa (gerarNovoIDTarefa tarefas) titulo 0.0 descricao dataAtual dataConclusao Nothing "Pendente" atribuidor executoresValidos
+                    let tarefasAtualizadas = novaTarefa : tarefas
+
+                    putStrLn "\nConfirme os dados abaixo:\n"
+                    putStrLn $ " - ID Tarefa: " ++ getIdTarefa novaTarefa
+                    putStrLn $ " - Título: " ++ titulo
+                    putStrLn $ " - Descrição: " ++ descricao
+                    putStrLn $ " - Data de Conclusão: " ++ show dataConclusao
+                    putStrLn $ " - ID Atribuidor: " ++ idAtribuidorStr
+                    putStrLn $ " - IDs Executores: " ++ intercalate ", " idsExecutores
+                    putStrLn "\nOs dados estão corretos?"
+                    putStrLn "1. Sim"
+                    putStrLn "2. Não"
+                    putStr "\nEscolha uma opção: "
+                    confirmacao <- getLine
+
+                    case confirmacao of
+                      "1" -> do
+                        putStrLn "Tarefa atribuída com sucesso!"
+                        let novoBanco = (funcionarios, tarefasAtualizadas, registros)
+                        salvarDados novoBanco
+                        subMenuTarefas novoBanco
+                      "2" -> do
+                        putStrLn "Atribuição de tarefa cancelada."
+                        subMenuTarefas banco
+                      _ -> do
+                        putStrLn "Opção inválida!"
+                        subMenuTarefas banco
+          else do
+            putStrLn "Erro: A data de conclusão deve ser posterior à data atual!"
+            subMenuTarefas banco
+
+-- Função para solicitar e validar a nota de avaliação
+solicitarNota :: IO Float
+solicitarNota = do
+  putStr "Por favor, avalie com uma nota de 0.0 a 10.0 pela tarefa realizada: "
+  notaStr <- getLine
+
+  -- Verifica se o input não é vazio e contém somente números
+  if not (camposValidos [notaStr]) || not (validarNota notaStr)
+    then do
+      putStrLn "\nErro: A avaliação deve conter apenas números e não pode estar vazia!"
+      solicitarNota -- Entrando em recursão caso não seja válido
+    else do
+      let nota = read notaStr :: Float
+
+      -- Verifica se a nota está dentro do intervalo permitido (0.0 a 10.0)
+      if nota < 0.0 || nota > 10.0
+        then do
+          putStrLn "\nErro: A avaliação deve ser um número entre 0.0 e 10.0!"
+          solicitarNota -- Entrando em recursão caso a nota não esteja dentro do intervalo
+        else return nota
+
+-- Função para atualizar o estado da tarefa --
+atualizarEstadoTarefa :: Banco -> IO Banco
+atualizarEstadoTarefa banco@(funcionarios, tarefas, registros) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nAtualizar Estado da Tarefa\n"
+
+  listarTarefasPendentes banco
+  putStr "Digite o ID da Tarefa: "
+  idTarefaStr <- getLine
+
+  -- Verifica se o campo ID da Tarefa não está vazio ou preenchido apenas com espaços
+  if not (camposValidos [idTarefaStr])
+    then do
+      putStrLn "Erro: Todos os campos devem ser preenchidos corretamente!"
+      subMenuTarefas banco
+    else do
+      let tarefaExistente = filter (\t -> getIdTarefa t == idTarefaStr) tarefas
+
+      -- verifica se o ID digitado corresponde ao ID de uma tarefa
+      if null tarefaExistente
+        then do
+          putStrLn "Erro: Tarefa não encontrada!"
+          subMenuTarefas banco
+        else do
+          let tarefa = head tarefaExistente
+              dataConclusao = getDataParaConclusao tarefa
+
+          dataAtual <- obterDataAtual
+
+          -- Verifica se a data atual é posterior a data de conclusão
+          if dataAtual > dataConclusao
+            then do
+              let tarefaAtualizada = tarefa {getEstadoTarefa = "Nao Realizada"} -- atualiza o estado da tarefa
+                  tarefasAtualizadas = tarefaAtualizada : filter (\t -> getIdTarefa t /= idTarefaStr) tarefas
+
+              putStrLn "Erro: A data de conclusão da tarefa já passou! Estado atualizado para Não Realizado."
+              let novoBanco = (funcionarios, tarefasAtualizadas, registros)
+              salvarDados novoBanco
+              subMenuTarefas novoBanco
+              
+            else do
+              nota <- solicitarNota -- chama a função que solicita uma nota de 0 a 10 avaliando a tarefa
+              let tarefaAtualizada = tarefa {getEstadoTarefa = "Concluída", getNota = nota, getDataDeEfetivacao = Just dataAtual}
+                  tarefasAtualizadas = tarefaAtualizada : filter (\t -> getIdTarefa t /= idTarefaStr) tarefas
+
+              putStrLn $ "Alteração do estado da tarefa realizado com sucesso!"
+              let novoBanco = (funcionarios, tarefasAtualizadas, registros)
+              salvarDados novoBanco
+              subMenuTarefas novoBanco
+
+-- Função para listar tarefas atribuídas a um funcionário
+listarTarefasDeUmFuncionario :: Banco -> IO ()
+listarTarefasDeUmFuncionario banco@(funcionarios, tarefas, _) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  
+  listarFuncionarios banco
+  putStrLn "\nListar Tarefas por Funcionário\n"
+  putStr "Digite o ID do Funcionário: "
+  idFuncionarioStr <- getLine
+
+  -- Validação do ID do funcionário
+  if not (camposValidos [idFuncionarioStr])
+    then putStrLn "ID do funcionário não pode ser vazio ou apenas espaços."
+    else do
+      -- Verificação se o ID do funcionário existe
+      if not (verificarIDFuncionario idFuncionarioStr funcionarios)
+        then putStrLn "ID do funcionário não encontrado."
+        else do
+          let tarefasPorFuncionario = filter (\t -> getIdFuncionario (getAtribuidor t) == idFuncionarioStr || idFuncionarioStr `elem` map getIdFuncionario (getExecutor t)) tarefas
+
+          if null tarefasPorFuncionario
+            then putStrLn "Nenhuma tarefa encontrada para o ID fornecido."
+            else do
+              imprimirTarefas tarefasPorFuncionario
+
+
+-- Função auxiliar para imprimir uma lista de tarefas
+imprimirTarefas :: [Tarefa] -> IO ()
+imprimirTarefas tarefas = do
+  mapM_
+    ( \t -> do
+        putStrLn $ "ID Tarefa: " ++ getIdTarefa t
+        putStrLn $ "Título: " ++ getTitulo t
+        putStrLn $ "Descrição: " ++ getDescricaoTarefa t
+        putStrLn $ "Data de Atribuição: " ++ formatarData (getDataAtribuicao t)
+        putStrLn $ "Data para Conclusão: " ++ formatarData (getDataParaConclusao t)
+        putStrLn $ "Data de Efetivação: " ++ maybe "N/A" formatarData (getDataDeEfetivacao t)
+        putStrLn $ "Estado: " ++ getEstadoTarefa t
+        putStrLn $ "Atribuidor: " ++ getNomeFuncionario (getAtribuidor t)
+        putStrLn $ "Executores: " ++ intercalate ", " (map getNomeFuncionario (getExecutor t))
+        putStrLn ""
+    )
+    tarefas
+
+-- Função para listar todas as tarefas que não estão concluídas
+listarTarefasPendentes :: Banco -> IO ()
+listarTarefasPendentes (_, tarefas, _) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nListar Tarefas Pendentes\n"
+  let tarefasPendentes = filter (\t -> getEstadoTarefa t == "Pendente") tarefas
+
+  if null tarefasPendentes
+    then do
+      putStrLn "Nenhuma tarefa pendente encontrada."
+    else do
+      putStrLn "Tarefas Pendentes:"
+      imprimirTarefas tarefasPendentes
+
+-- Função para listar as tarefas concluídas fora do prazo
+listarTarefasConcluidasForaDoPrazo :: Banco -> IO ()
+listarTarefasConcluidasForaDoPrazo (_, tarefas, _) = do
+  let tarefasForaDoPrazo = filter (\t -> getEstadoTarefa t == "Nao Realizada") tarefas
+  if null tarefasForaDoPrazo
+    then putStrLn "\nNão há tarefas concluídas fora do prazo."
+    else do
+      putStrLn "\nTarefas Concluídas Fora do Prazo:\n"
+      imprimirTarefas tarefasForaDoPrazo
+      putStrLn ""
+
+-- Submenu para consultar produtividade
+subMenuProdutividade :: Banco -> IO Banco
+subMenuProdutividade banco = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nConsultar Produtividade\n"
+  putStrLn "1. Ranking por Produtividade"
+  putStrLn "2. Ranking por Tarefas concluídas"
+  putStrLn "3. Ranking por Frequência"
+  putStrLn "4. Ranking por Notas"
+  putStrLn "5. Voltar ao Menu Principal\n"
+
+  putStr "Escolha uma opção: "
+
+  opcao <- getLine
+  case opcao of
+    "1" -> do
+      rankingPorProdutividade banco
+      subMenuProdutividade banco
+    "2" -> do
+      rankingPorTarefasConcluidas banco
+      subMenuProdutividade banco
+    "3" -> do
+      rankingPorRegistros banco
+      subMenuProdutividade banco
+    "4" -> do
+      rankingPorNotas banco
+      subMenuProdutividade banco
+  
+    "5" -> menuPrincipal banco
+    _ -> do
+      putStrLn "Opção inválida, tente novamente."
+      subMenuProdutividade banco
+
+-- Função para normalizar os critérios
+normalizar :: (Real a) => a -> a -> Float
+normalizar x maximo = fromRational (toRational x) / fromRational (toRational maximo)
+
+-- calcula Horas Trabalhadas
+calcularHorasTrabalhadas :: Funcionario -> [Registro] -> Float
+calcularHorasTrabalhadas funcionario registros =
+  let registrosFuncionario = filter (\r -> getIdFuncionario (getFuncionario r) == getIdFuncionario funcionario) registros
+      registrosComSaida = filter (\r -> isJust (getHoraSaida r)) registrosFuncionario
+      calcularHoras (Registro _ _ _ horaEntrada (Just horaSaida)) = timeOfDayToTime horaSaida - timeOfDayToTime horaEntrada
+      calcularHoras _ = 0
+   in fromRational $ toRational (sum $ map calcularHoras registrosComSaida) / 3600
+
+-- Calcula a quantidade de tarefas realizadas por um funcionário
+calcularQuantidadeTarefasRealizadas :: Funcionario -> [Tarefa] -> Int
+calcularQuantidadeTarefasRealizadas funcionario tarefas = 
+  let idFuncionario = getIdFuncionario funcionario
+  
+      -- Filtra todas as tarefas concluídas e obtém todos os IDs de todos executores
+      idsExecutores = concatMap (map getIdFuncionario . getExecutor) $ filter (isJust . getDataDeEfetivacao) tarefas
+      
+      -- Conta as ocorrências do ID do funcionário
+      quantidadeTarefas = length $ filter (== idFuncionario) idsExecutores
+  in quantidadeTarefas
+
+-- Calcula a média das notas de um funcionário
+calcularMediaNotas :: Funcionario -> [Tarefa] -> (Float, Int)
+calcularMediaNotas funcionario tarefas = do
+  let idFuncionario = getIdFuncionario funcionario
+  
+  -- Filtra as tarefas que foram concluídas e que o funcionário está na lista de executores
+  let notas = [getNota t | t <- tarefas, idFuncionario `elem` map getIdFuncionario (getExecutor t), getEstadoTarefa t == "Concluída"]
+   in if null notas
+        then (0.0, 0)
+        else do 
+          let qtdNotas = length notas
+          let media = (foldr (+) 0 notas) / fromIntegral (length notas)
+          (media, qtdNotas)
+          
+-- Função para listar a produtividade dos funcionários com pesos diferentes para cada critério
+listarProdutividadeFuncionarios :: Banco -> IO ()
+listarProdutividadeFuncionarios banco@(funcionarios, _, _) = do
+  if null funcionarios
+    then putStrLn "Não há funcionários cadastrados."
+    else do
+      putStrLn "\nProdutividade dos Funcionários:\n"
+      mapM_ (\f -> do
+        let produtividade = calcularProdutividade f banco
+        putStrLn $ "ID: " ++ getIdFuncionario f
+        putStrLn $ "Nome: " ++ getNomeFuncionario f
+        putStrLn $ "Produtividade: " ++ printf "%3.f" produtividade
+        putStrLn "") funcionarios
+
+-- Pesos para cada critério de produtividade
+pesoTarefasConcluidas :: Float
+pesoTarefasConcluidas = 0.4
+
+pesoNota :: Float
+pesoNota = 0.3
+
+pesoAjustePrazo :: Float
+pesoAjustePrazo = 0.1
+
+pesoHorasTrabalhadas :: Float
+pesoHorasTrabalhadas = 0.2
+
+-- calcularMediaPonderadaDaProdutividade --
+calcularProdutividade :: Funcionario -> Banco -> Float
+calcularProdutividade funcionario (_, tarefas, registros) =
+
+-- Obetendo o cálculo dos 3critérios a serem analisados
+  let horasTrabalhadas = calcularHorasTrabalhadas funcionario registros
+      tarefasConcluidas = calcularQuantidadeTarefasRealizadas funcionario tarefas
+      (mediaNotas, _) = calcularMediaNotas funcionario tarefas
+      ajustePrazo = sum [calcularAjustePrazo (getDataParaConclusao tarefa) (getDataDeEfetivacao tarefa)
+                  | tarefa <- tarefas,
+                    any (\f -> getIdFuncionario f == getIdFuncionario funcionario) (getExecutor tarefa)]
+
+      maxHorasTrabalhadas = 160  -- valor máximo esperado para horas trabalhadas (ex: 160 horas/mês)
+      maxTarefasRealizadas = 50   -- valor máximo esperado para tarefas realizadas
+      maxMediaNotas = 10.0        -- valor máximo para média de notas
+
+      -- Normalizando os critérios
+      horasNormalizadas = normalizar horasTrabalhadas (fromIntegral maxHorasTrabalhadas)
+      tarefasNormalizadas = normalizar (fromIntegral tarefasConcluidas) (fromIntegral maxTarefasRealizadas)
+
+      notasNormalizadas = normalizar mediaNotas maxMediaNotas
+      ajusteNormalizado = ajustePrazo
+
+      -- Calcular a média ponderada
+      produtividade = (pesoHorasTrabalhadas * horasNormalizadas +
+                      pesoTarefasConcluidas * tarefasNormalizadas +
+                      pesoNota * notasNormalizadas + pesoAjustePrazo * ajusteNormalizado)
+  in produtividade * 10
+
+-- Função para calcular a produtividade diária de um funcionário
+calcularProdutividadeDiaria :: Funcionario -> Banco -> Dia -> Float
+calcularProdutividadeDiaria funcionario (funcionarios, tarefas, registros) dia =
+  let tarefasDoDia = filter (\t -> getDataDeEfetivacao t == Just dia) tarefas
+      bancoDoDia = (funcionarios, tarefasDoDia, registros)
+   in calcularProdutividade funcionario bancoDoDia
+
+-- Função para calcular a produtividade semanal de um funcionário
+calcularProdutividadeSemanal :: Funcionario -> Banco -> Dia -> Float
+calcularProdutividadeSemanal funcionario (funcionarios, tarefas, registros) dia =
+  let inicioSemana = addDays (- (fromIntegral (mod (fromEnum dia) 7))) dia
+      fimSemana = addDays 6 inicioSemana
+      tarefasDaSemana = filter (\t -> maybe False (\d -> d >= inicioSemana && d <= fimSemana) (getDataDeEfetivacao t)) tarefas
+      bancoDaSemana = (funcionarios, tarefasDaSemana, registros)
+   in calcularProdutividade funcionario bancoDaSemana
+
+-- Função para calcular a produtividade mensal de um funcionário
+calcularProdutividadeMensal :: Funcionario -> Banco -> Integer -> Int -> Float
+calcularProdutividadeMensal funcionario (funcionarios, tarefas, registros) ano mes =
+  let tarefasDoMes = filter (\t -> maybe False (\d -> let (y, m, _) = toGregorian d in y == ano && m == mes) (getDataDeEfetivacao t)) tarefas
+      bancoDoMes = (funcionarios, tarefasDoMes, registros)
+   in calcularProdutividade funcionario bancoDoMes
+
+-- Função para ajustar a nota de uma tarefa com base no prazo
+ajustarNotaPeloPrazo :: Dia -> Maybe Dia -> Nota -> Nota
+ajustarNotaPeloPrazo prazoConclusao (Just dataEfetivacao) nota =
+  let diasDeDiferenca = diffDays dataEfetivacao prazoConclusao
+      ajuste = if diasDeDiferenca < 0
+                 then nota * (1 + (abs (fromIntegral diasDeDiferenca) / fromIntegral (diffDays prazoConclusao dataEfetivacao)))
+                 else nota * (1 - (fromIntegral diasDeDiferenca / fromIntegral (diffDays dataEfetivacao prazoConclusao)))
+   in max 0 (min 10 ajuste)
+ajustarNotaPeloPrazo _ Nothing nota = nota
+
+-- Função para calcular o ajuste pelo prazo em uma tarefa
+calcularAjustePrazo :: Dia -> Maybe Dia -> Float
+calcularAjustePrazo prazoConclusao (Just dataEfetivacao) =
+  let diasDeDiferenca = diffDays dataEfetivacao prazoConclusao
+   in if diasDeDiferenca < 0
+        then abs (fromIntegral diasDeDiferenca) / fromIntegral (diffDays prazoConclusao dataEfetivacao)
+        else - (fromIntegral diasDeDiferenca) / fromIntegral (diffDays dataEfetivacao prazoConclusao)
+calcularAjustePrazo _ Nothing = 0.0
+
+-- Função para consultar a média geral de produtividade da empresa
+consultarMediaGeralEmpresa :: Banco -> IO ()
+consultarMediaGeralEmpresa banco@(funcionarios, _, _) = do
+
+  if null funcionarios
+    then putStrLn "Não há funcionários cadastrados para calcular a média de produtividade da empresa."
+    else do
+      let mediasProdutividade = map (\f -> calcularProdutividade f banco) funcionarios
+      let somaProdutividade = sum mediasProdutividade
+      let mediaGeralEmpresa = somaProdutividade / fromIntegral (length mediasProdutividade)
+      putStrLn $ "Média Geral de Produtividade da Empresa: " ++ printf "%.2f" mediaGeralEmpresa
+
+-- Define a função `on` para evitar a importação de bibliotecas externas
+on :: (b -> b -> Ordering) -> (a -> b) -> a -> a -> Ordering
+on cmp f x y = cmp (f x) (f y)
+
+-- Função para obter o ano atual
+obterAnoAtual :: IO Integer
+obterAnoAtual = do
+  (year, _, _) <- toGregorian . utctDay <$> getCurrentTime
+  return year
+
+-- Função de ranking por produtividade
+rankingPorProdutividade :: Banco -> IO ()
+rankingPorProdutividade banco@(funcionarios, _, _) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nRanking por Produtividade\n"
+  let rankings = sortBy (flip compare `on` (`calcularProdutividade` banco)) funcionarios
+  anoAtual <- obterAnoAtual
+  diaAtual <- obterDataAtual
+  mapM_
+    ( \f -> do
+        let produtividade = calcularProdutividade f banco
+        let produtividadeDiaria = calcularProdutividadeDiaria f banco diaAtual
+        let produtividadeSemanal = calcularProdutividadeSemanal f banco diaAtual
+        let produtividadeMensal = calcularProdutividadeMensal f banco anoAtual (month diaAtual)
+        
+        putStrLn $ "ID Funcionário: " ++ getIdFuncionario f
+        putStrLn $ "Nome: " ++ getNomeFuncionario f
+        putStrLn $ "Produtividade geral: " ++ printf "%.2f" produtividade
+        putStrLn $ "Produtividade diária: " ++ printf "%.2f" produtividadeDiaria
+        putStrLn $ "Produtividade semanal: " ++ printf "%.2f" produtividadeSemanal
+        putStrLn $ "Produtividade mensal: " ++ printf "%.2f" produtividadeMensal
+        putStrLn ""
+    )
+    rankings
+  consultarMediaGeralEmpresa banco
+  where
+    month :: Day -> Int
+    month day = let (_, m, _) = toGregorian day in m
+
+rankingPorTarefasConcluidas :: Banco -> IO ()
+rankingPorTarefasConcluidas (funcionarios, tarefas, _) = do
+  let listaTarefas = map (\f -> (f, calcularQuantidadeTarefasRealizadas f tarefas)) funcionarios
+  let listaOrdenada = sortBy (\(_, qt1) (_, qt2) -> compare qt2 qt1) listaTarefas 
+  putStrLn "-------------------------------------------------------"
+  putStrLn "Ranking de Funcionários por Quantidade de Tarefas Realizadas:"
+  
+  mapM_
+    (\(funcionario, qt) -> do
+      putStrLn $ "ID Funcionário: " ++ getIdFuncionario funcionario
+      putStrLn $ "Nome: " ++ getNomeFuncionario funcionario
+      putStrLn $ "Tarefas Concluídas: " ++ show qt
+      putStrLn ""
+    )
+    listaOrdenada
+  
+-- Ranking por Registros de Entrada e Saída
+rankingPorRegistros :: Banco -> IO ()
+rankingPorRegistros (_, _, registros) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "\nRanking por Registros de Entrada e Saída\n"
+  let idsFuncionarios = map (getIdFuncionario . getFuncionario) registros
+  let funcionariosUnicos = nub idsFuncionarios
+  let rankings = sortBy (flip compare `on` (\myid -> length $ filter (\r -> getIdFuncionario (getFuncionario r) == myid) registros)) funcionariosUnicos
+  mapM_
+    ( \myid -> do
+        let registrosFuncionario = filter (\r -> getIdFuncionario (getFuncionario r) == myid) registros
+        putStrLn $ "ID Funcionário: " ++ myid
+        putStrLn $ "Nome: " ++ getNomeFuncionario (getFuncionario (head registrosFuncionario))
+        putStrLn $ "Número de Registros: " ++ show (length registrosFuncionario)
+        putStrLn ""
+    )
+    rankings
+
+rankingPorNotas :: Banco -> IO ()
+rankingPorNotas (funcionarios, tarefas, _) = do
+  putStrLn "\n------------------------------------------------------------------------"
+  putStrLn "Ranking de Funcionários por Média de Notas\n"
+
+  -- Calcula a média de notas e a quantidade de notas para cada funcionário
+  let listaNotas = map (\f -> (f, calcularMediaNotas f tarefas)) funcionarios
+
+  -- Ordena a lista pela média de notas em ordem decrescente, e em caso de empate, pela quantidade de notas
+  let listaOrdenada = sortBy (\(_, (media1, qtd1)) (_, (media2, qtd2)) -> 
+                               compare (media2, qtd2) (media1, qtd1)) listaNotas
+
+  mapM_ (\(funcionario, (media, qtdNotas)) -> do
+           let nome = getNomeFuncionario funcionario
+           let idFuncionario = getIdFuncionario funcionario
+           printf "ID: %-3s | Nome: %-20s |  Média: %6.2f  |  Qtd de notas: %d\n" idFuncionario nome media qtdNotas
+      
+        ) listaOrdenada
+  
+  putStrLn "------------------------------------------------------------------------"
